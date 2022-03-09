@@ -1,3 +1,5 @@
+from asyncio.windows_events import NULL
+from pickle import FALSE
 from requests import request, cookies as c, get, post
 import time
 from bs4 import BeautifulSoup
@@ -6,6 +8,11 @@ from urllib import parse
 import tkinter as tk
 import re
 import os
+import ssl
+
+ssl._create_default_https_context = ssl._create_unverified_context
+
+path = 'D:\\py\\edu\\img\\'
 
 host = 'https://hbt.gpa.enetedu.com'
 
@@ -23,14 +30,15 @@ def downImg():
     response = request("GET", "https://mingshi8.hbte.com.cn/index.php/Home/Login/Verify", headers=headers,
                        cookies=page.cookies, allow_redirects=False)
     cookies.update(response.cookies)
-    name = "../img/" + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()) + ".jpg"
+    name = path + time.strftime("%Y%m%d%H%M%S", time.localtime()) + ".jpg"
+    
     file = open(file=name, mode='wb+')
     file.write(response.content)
     file.close()
     return name
 
 
-def login(user, password, valid):
+def login(user, password, valid, text):
     form = {
         'id_number': user,
         'pwd': password,
@@ -40,19 +48,33 @@ def login(user, password, valid):
     print("cookies: ", cookies)
     response = post("https://mingshi8.hbte.com.cn/index.php/home/login/dologin.html", data=form,
                     headers=headers,
-                    cookies=cookies, allow_redirects=False)
+                    cookies=cookies, allow_redirects=False, verify=False)
+                
+    
+    loginResult = BeautifulSoup(response.content,  features='html.parser')
+    message = loginResult.find("div", class_="system-message")
+    p = message.find("p")
+    if p['class'][0] == 'success':
+        text.insert(tk.END, p.text + '\n')
+    else:
+        text.insert(tk.END, p.text + '\n')
+        return
+
     cookies.update(response.cookies)
-    project = get('https://mingshi8.hbte.com.cn/index.php/home/project/jxz_xq/id/287/uid/708283.html', headers=headers,
-                  cookies=cookies)
+
+
+    project = get('https://mingshi8.hbte.com.cn/index.php/home/project/jxz_xq/id/419/uid/708283.html', headers=headers,
+                  cookies=cookies, verify=False)
+
     jumpUrl = re.match(r'.*(https://peixun.*html)', project.text, re.M | re.S).group(1)
-    jump = get(jumpUrl[0:jumpUrl.find('"')], cookies=cookies, headers=headers)
+    jump = get(jumpUrl[0:jumpUrl.find('"')], cookies=cookies, headers=headers, verify=False)
     eneteducookies.update(jump.cookies)
     return jump
 
 
 def study(resp, text):
     response = post("https://hbt.gpa.enetedu.com/UserCenter/GetPersonCenterList", data={'type': 4}, headers=headers,
-                    cookies=eneteducookies)
+                    cookies=eneteducookies, verify=False)
     list = json.loads(response.text)
     data = list['data']
     for d in data:
@@ -63,7 +85,7 @@ def study(resp, text):
             iframe = get(
                 "https://hbt.gpa.enetedu.com/ChooseCourseCenter/CourseInterface?newSearchFlag=true&themeID={}&intPageNo={}".format(
                     str(d['id']), intPageNo),
-                cookies=eneteducookies, headers=headers)
+                cookies=eneteducookies, headers=headers, verify=False)
 
             table = BeautifulSoup(iframe.text, features='html.parser').find(id='courseList')
             trs = table.findAll("tr")
@@ -75,7 +97,7 @@ def study(resp, text):
                     str(d['id']), intPageNo)
                 iframe = get(
                     url,
-                    cookies=eneteducookies, headers=headers)
+                    cookies=eneteducookies, headers=headers, verify=False)
                 table = BeautifulSoup(iframe.text, features='html.parser').find('tbody', id='courseList')
                 trs = table.findAll("tr")
                 doParse(trs, text)
@@ -91,11 +113,11 @@ def doParse(trs, text):
     for i in range(len(trs) - 1):
         tds = trs[i].findAll("td")
         if tds[2].string.strip() == '视频课程':
-            text.insert(tk.END, '\t' + tds[1]['title'] + '\n')
+            text.insert(tk.END, '\t' + tds[1].text.strip() + '\n')
             text.see(tk.END)
             onclick = tds[1].find("a")['onclick']
             url = onclick[onclick.find('(') + 2: onclick.find(')') - 1]
-            coursePage = get(host + url, headers=headers, cookies=eneteducookies)
+            coursePage = get(host + url, headers=headers, cookies=eneteducookies, verify=False)
             eneteducookies.update(coursePage.cookies)
             user = eneteducookies.get("EDUCATION_USER_INFO_SESSION_FRONT")
             id = parse.parse_qs(user)['id'][0]
@@ -105,16 +127,19 @@ def doParse(trs, text):
             project_id = page.find(id='project_id')['value']
             classtopic_id = page.find(id='classtopic_id')['value']
 
-            lis = page.find('ul', class_='courseName').findAll("li")
+            lis = page.findAll('ul', class_='courseName')[0].findAll("li")
             for li in lis:
                 a = li.find("a")
-                text.insert(tk.END, '\t\t' + a.string.strip() + '\n')
+                if (a == None ):
+                    continue
+
+                text.insert(tk.END, '\t\t' + a.text.strip() + '\n')
                 text.see(tk.END)
                 onclick = a['onclick']
                 coursewareid = onclick[onclick.find('(') + 1: onclick.find(')')]
                 touch = 'https://hbt.gpa.enetedu.com/Common/RecordPlayBack?course_id={}&courseware_id={}&classtopic_id={}'.format(
                     courseID, coursewareid, classtopic_id)
-                touchPage = get(touch, headers=headers, cookies=eneteducookies)
+                touchPage = get(touch, headers=headers, cookies=eneteducookies, verify=False)
                 cook = parse.parse_qs(touchPage.cookies.get("enet_studentCourseWareLearn" + coursewareid + '1'))
                 if cook is None or len(cook) == 0:
                     continue
@@ -127,7 +152,7 @@ def doParse(trs, text):
                     'end': '9999999',
                     'student_id': id,
                     'course_type': '1'
-                }, headers=headers, cookies=eneteducookies)
+                }, headers=headers, cookies=eneteducookies, verify=False)
                 eneteducookies.update(survey.cookies)
                 status = post('https://hbt.gpa.enetedu.com/VideoPlay/updateStudyStatue2', data={
                     'subject_id': '0',
@@ -139,18 +164,31 @@ def doParse(trs, text):
                     'playSec': '0',
                     'classtopic_id': classtopic_id,
                     'student_id': id
-                }, headers=headers, cookies=eneteducookies)
+                }, headers=headers, cookies=eneteducookies, verify=False)
 
                 post('https://hbt.gpa.enetedu.com//MyCourse/videocreditcomputing', data={
                     'classtopic_id': classtopic_id,
                     'courseid': courseID
-                }, headers=headers, cookies=eneteducookies)
+                }, headers=headers, cookies=eneteducookies, verify=False)
 
+
+            textList = page.findAll('ul', class_='courseName')[1].findAll("li")
+            for li in textList:
+                a = li.find("a")
+                if (a == None):
+                    continue
+        
+                text.insert(tk.END, '\t\t' + a.text.strip() + '\n')
+                text.see(tk.END)
+                onclick = a['onclick']
+                coursewareid = onclick[onclick.find('(') + 1: onclick.find(')')]
+                survey = post('https://hbt.gpa.enetedu.com/MyCourse/DownloadResourceShow', data={
+                                    'coursewareid': coursewareid
+                                }, headers=headers, cookies=eneteducookies, verify=False)
 
 def clear():
     cookies.clear()
     eneteducookies.clear()
-    path = '../img'
     imgs = os.listdir(path)
     for img in imgs:
         os.remove(path + '/' + img)
