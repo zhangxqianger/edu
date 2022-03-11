@@ -73,6 +73,8 @@ def login(user, password, valid, text):
 
 
 def study(resp, text):
+
+    # 课程学习
     response = post("https://hbt.gpa.enetedu.com/UserCenter/GetPersonCenterList", data={'type': 4}, headers=headers,
                     cookies=eneteducookies, verify=False)
     list = json.loads(response.text)
@@ -100,91 +102,105 @@ def study(resp, text):
                     cookies=eneteducookies, headers=headers, verify=False)
                 table = BeautifulSoup(iframe.text, features='html.parser').find('tbody', id='courseList')
                 trs = table.findAll("tr")
-                doParse(trs, text)
+                for i in range(len(trs) - 1):
+                    tds = trs[i].findAll("td")
+                    if tds[2].string.strip() == '视频课程':
+                        text.insert(tk.END, '\t' + tds[1].text.strip() + '\n')
+                        text.see(tk.END)
+                        onclick = tds[1].find("a")['onclick']
+                        url = onclick[onclick.find('(') + 2: onclick.find(')') - 1]
+                        doParse(url, text)
+
+
+    # 自主学习
+    autonomousCourseSelection = get("https://hbt.gpa.enetedu.com/UserCenter/AutonomousCourseSelection?newSearchFlag=true",  headers=headers,
+                    cookies=eneteducookies, verify=False)
+    auto = BeautifulSoup(autonomousCourseSelection.text, features='html.parser')
+    trainTr = auto.find("div", class_="my-train-bd").find_all("tr")
+    for i in range(1, len(trainTr) - 1):
+        tr = trainTr[i]
+        a = tr.find("td").find("a")
+        text.insert(tk.END, a.text.strip() + '\n')
+        text.see(tk.END)
+        url = a['href']
+        doParse(url, text)
 
     text.insert(tk.END, '-------------学习完成-------------\n')
     text.see(tk.END)
     # 清空资源
     clear()
 
+# /MyCourse/MyCurriculum?ProcesFlag=true&courseID=9691&requestType=4&classtopic_id=210
+
+def doParse(url, text):
+    coursePage = get(host + url, headers=headers, cookies=eneteducookies, verify=False)
+    eneteducookies.update(coursePage.cookies)
+    user = eneteducookies.get("EDUCATION_USER_INFO_SESSION_FRONT")
+    id = parse.parse_qs(user)['id'][0]
+
+    page = BeautifulSoup(coursePage.text, features='html.parser')
+    courseID = page.find(id='courseID')['value']
+    project_id = page.find(id='project_id')['value']
+    classtopic_id = page.find(id='classtopic_id')['value']
+
+    lis = page.findAll('ul', class_='courseName')[0].findAll("li")
+    for li in lis:
+        a = li.find("a")
+        if (a == None ):
+            continue
+
+        text.insert(tk.END, '\t\t' + a.text.strip() + '\n')
+        text.see(tk.END)
+        onclick = a['onclick']
+        coursewareid = onclick[onclick.find('(') + 1: onclick.find(')')]
+        touch = 'https://hbt.gpa.enetedu.com/Common/RecordPlayBack?course_id={}&courseware_id={}&classtopic_id={}'.format(
+            courseID, coursewareid, classtopic_id)
+        touchPage = get(touch, headers=headers, cookies=eneteducookies, verify=False)
+        cook = parse.parse_qs(touchPage.cookies.get("enet_studentCourseWareLearn" + coursewareid + '1'))
+        if cook is None or len(cook) == 0:
+            continue
+        key = cook['key']
+        # eneteducookies.update(touchPage.cookies)
+        survey = post('https://hbt.gpa.enetedu.com/VideoPlay/StudySurvey', data={
+            'course_id': courseID,
+            'courseware_id': coursewareid,
+            'start': '1000000',
+            'end': '9999999',
+            'student_id': id,
+            'course_type': '1'
+        }, headers=headers, cookies=eneteducookies, verify=False)
+        eneteducookies.update(survey.cookies)
+        status = post('https://hbt.gpa.enetedu.com/VideoPlay/updateStudyStatue2', data={
+            'subject_id': '0',
+            'course_id': courseID,
+            'courseware_id': coursewareid,
+            'course_type': '1',
+            'wordkey': key,
+            'iPlaySec': '9999',
+            'playSec': '0',
+            'classtopic_id': classtopic_id,
+            'student_id': id
+        }, headers=headers, cookies=eneteducookies, verify=False)
+
+        post('https://hbt.gpa.enetedu.com//MyCourse/videocreditcomputing', data={
+            'classtopic_id': classtopic_id,
+            'courseid': courseID
+        }, headers=headers, cookies=eneteducookies, verify=False)
 
 
-def doParse(trs, text):
-    for i in range(len(trs) - 1):
-        tds = trs[i].findAll("td")
-        if tds[2].string.strip() == '视频课程':
-            text.insert(tk.END, '\t' + tds[1].text.strip() + '\n')
-            text.see(tk.END)
-            onclick = tds[1].find("a")['onclick']
-            url = onclick[onclick.find('(') + 2: onclick.find(')') - 1]
-            coursePage = get(host + url, headers=headers, cookies=eneteducookies, verify=False)
-            eneteducookies.update(coursePage.cookies)
-            user = eneteducookies.get("EDUCATION_USER_INFO_SESSION_FRONT")
-            id = parse.parse_qs(user)['id'][0]
+    textList = page.findAll('ul', class_='courseName')[1].findAll("li")
+    for li in textList:
+        a = li.find("a")
+        if (a == None):
+            continue
 
-            page = BeautifulSoup(coursePage.text, features='html.parser')
-            courseID = page.find(id='courseID')['value']
-            project_id = page.find(id='project_id')['value']
-            classtopic_id = page.find(id='classtopic_id')['value']
-
-            lis = page.findAll('ul', class_='courseName')[0].findAll("li")
-            for li in lis:
-                a = li.find("a")
-                if (a == None ):
-                    continue
-
-                text.insert(tk.END, '\t\t' + a.text.strip() + '\n')
-                text.see(tk.END)
-                onclick = a['onclick']
-                coursewareid = onclick[onclick.find('(') + 1: onclick.find(')')]
-                touch = 'https://hbt.gpa.enetedu.com/Common/RecordPlayBack?course_id={}&courseware_id={}&classtopic_id={}'.format(
-                    courseID, coursewareid, classtopic_id)
-                touchPage = get(touch, headers=headers, cookies=eneteducookies, verify=False)
-                cook = parse.parse_qs(touchPage.cookies.get("enet_studentCourseWareLearn" + coursewareid + '1'))
-                if cook is None or len(cook) == 0:
-                    continue
-                key = cook['key']
-                # eneteducookies.update(touchPage.cookies)
-                survey = post('https://hbt.gpa.enetedu.com/VideoPlay/StudySurvey', data={
-                    'course_id': courseID,
-                    'courseware_id': coursewareid,
-                    'start': '1000000',
-                    'end': '9999999',
-                    'student_id': id,
-                    'course_type': '1'
-                }, headers=headers, cookies=eneteducookies, verify=False)
-                eneteducookies.update(survey.cookies)
-                status = post('https://hbt.gpa.enetedu.com/VideoPlay/updateStudyStatue2', data={
-                    'subject_id': '0',
-                    'course_id': courseID,
-                    'courseware_id': coursewareid,
-                    'course_type': '1',
-                    'wordkey': key,
-                    'iPlaySec': '9999',
-                    'playSec': '0',
-                    'classtopic_id': classtopic_id,
-                    'student_id': id
-                }, headers=headers, cookies=eneteducookies, verify=False)
-
-                post('https://hbt.gpa.enetedu.com//MyCourse/videocreditcomputing', data={
-                    'classtopic_id': classtopic_id,
-                    'courseid': courseID
-                }, headers=headers, cookies=eneteducookies, verify=False)
-
-
-            textList = page.findAll('ul', class_='courseName')[1].findAll("li")
-            for li in textList:
-                a = li.find("a")
-                if (a == None):
-                    continue
-        
-                text.insert(tk.END, '\t\t' + a.text.strip() + '\n')
-                text.see(tk.END)
-                onclick = a['onclick']
-                coursewareid = onclick[onclick.find('(') + 1: onclick.find(')')]
-                survey = post('https://hbt.gpa.enetedu.com/MyCourse/DownloadResourceShow', data={
-                                    'coursewareid': coursewareid
-                                }, headers=headers, cookies=eneteducookies, verify=False)
+        text.insert(tk.END, '\t\t' + a.text.strip() + '\n')
+        text.see(tk.END)
+        onclick = a['onclick']
+        coursewareid = onclick[onclick.find('(') + 1: onclick.find(')')]
+        survey = post('https://hbt.gpa.enetedu.com/MyCourse/DownloadResourceShow', data={
+                            'coursewareid': coursewareid
+                        }, headers=headers, cookies=eneteducookies, verify=False)
 
 def clear():
     cookies.clear()
