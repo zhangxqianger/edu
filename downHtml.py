@@ -119,11 +119,13 @@ def study(resp, text):
     trainTr = auto.find("div", class_="my-train-bd").find_all("tr")
     for i in range(1, len(trainTr) - 1):
         tr = trainTr[i]
-        a = tr.find("td").find("a")
-        text.insert(tk.END, a.text.strip() + '\n')
-        text.see(tk.END)
-        url = a['href']
-        doParse(url, text)
+        tds = tr.find_all("td")
+        if tds[1].text.strip() != '已学完': 
+            a = tds[0].find('a')
+            text.insert(tk.END, a.text.strip() + '\n')
+            text.see(tk.END)
+            url = a['href']
+            doParse(url, text)
 
     text.insert(tk.END, '-------------学习完成-------------\n')
     text.see(tk.END)
